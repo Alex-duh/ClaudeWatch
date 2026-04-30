@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Pro Usage Tracker",
+  "version": "1.0.0",
+  "description": "Scrapes Claude Pro usage from settings page and reports to local menu bar app.",
+  "permissions": [
+    "activeTab",
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "http://localhost:9999/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/settings*", "https://claude.ai/settings/usage*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Claude Usage Tracker"
+  }
+}

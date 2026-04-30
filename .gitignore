@@ -1,0 +1,9 @@
+menubar/.venv/
+menubar/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+dist/
+build/
+*.egg-info/
