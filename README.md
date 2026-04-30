@@ -1,23 +1,25 @@
-# Claude Usage Tracker
+# ClaudeWatch
 
-A macOS menu bar app that shows your Claude session and weekly usage in real time — no browser tab required after setup.
+A minimal macOS menu bar app that shows your Claude session and weekly usage in real time — no browser tab required after setup.
 
 ![Demo](Demo.gif)
 
 ```
 Claude S:71%  W:14%
-  ┌──────────────────────────────┐
-  │ Session:  ███████▒▒▒  71%   │
-  │   ↺ resets  in 6 min        │
-  │ ─────────────────────────── │
-  │ Weekly:   █▒▒▒▒▒▒▒▒▒  14%  │
-  │   ↺ resets  Thu 12:00 AM    │
-  │ ─────────────────────────── │
-  │ Last updated:  Apr 30 14:22 │
-  │ ─────────────────────────── │
-  │ Open Settings               │
-  │ Quit                        │
-  └──────────────────────────────┘
+  ┌─────────────────────────────────┐
+  │ Session:  ███████▒▒▒  71%      │
+  │   ↺ resets  in 6 min           │
+  │   ▁▂▃▄▅▆▇▇██  ↑ +15%          │
+  │ ──────────────────────────────  │
+  │ Weekly:   █▒▒▒▒▒▒▒▒▒  14%     │
+  │   ↺ resets  Thu 12:00 AM       │
+  │   ▁▁▁▁▂▂▂▂▃▃  → steady        │
+  │ ──────────────────────────────  │
+  │ Last updated:  Apr 30 14:22    │
+  │ ──────────────────────────────  │
+  │ Open Settings                  │
+  │ Quit                           │
+  └─────────────────────────────────┘
 ```
 
 **S** = current session · **W** = weekly across all models
@@ -37,21 +39,59 @@ cd claude-usage-tracker
 
 Two pieces work together:
 
-1. **Chrome extension** — runs silently in the background, opens `claude.ai/settings/usage` every 3 minutes, scrapes your usage numbers, and sends them to your Mac over a local HTTP connection.
+**Chrome extension** — runs silently in the background, opens `claude.ai/settings/usage` every 3 minutes, scrapes your usage numbers, and sends them to your Mac over a local HTTP connection (never leaves your machine).
 
-2. **Menu bar app** — a Python app that listens for that data and keeps your menu bar up to date. Remembers the last reading across restarts, so it always shows something immediately.
+**Menu bar app** — a Python app that listens for that data and keeps your menu bar up to date. Saves every reading to a local history log so it can show sparkline graphs and trends over time.
 
 ```
-chrome.ai/settings/usage
+claude.ai/settings/usage
         │
    content.js  (reads the page)
         │
-   POST :9999  (local only, never leaves your machine)
+   POST :9999  (localhost only)
         │
    Flask server  ──▶  rumps menu bar
                             │
-                   ~/.claude_usage.json  (saved to disk)
+                   ~/.claude_usage.json     (current state)
+                   ~/.claude_usage_history.json  (rolling history)
 ```
+
+---
+
+## Features
+
+### Live progress bars
+Both session and weekly usage shown as filled/unfilled block bars with exact percentages.
+
+### Sparkline history graphs
+Every scrape is logged locally. The dropdown shows a mini graph of the last ~45 minutes of readings so you can see usage trajectory at a glance.
+
+```
+▁▂▃▄▅▆▇▇██  ↑ +15%
+```
+
+### Trend indicators
+Compares current usage to ~1 hour ago and shows whether you're accelerating, steady, or if a session reset was detected.
+
+| Indicator | Meaning |
+|---|---|
+| `↑ +15%` | Used 15% more than an hour ago |
+| `→ steady` | Usage rate is flat |
+| `↓ -5%` | Less usage than an hour ago |
+| `↺ reset` | Session reset detected |
+
+### Claude Code statusline
+Usage is shown directly in the Claude Code terminal UI in colour — **orange** for session, **white** for weekly.
+
+```
+◆ Claude  S:71% W:14%
+```
+
+### Zero credential risk
+ClaudeWatch reads the `claude.ai/settings/usage` page the same way a human would — no session keys, no API tokens, no cookies extracted. Other tools in this space pull `sk-ant-` session keys from your browser, which carries real account risk. ClaudeWatch never touches your credentials.
+
+### Persists across restarts
+Last known values are restored immediately on launch from `~/.claude_usage.json`, so the menu bar always shows real numbers — even before the first scrape of a new session.
 
 ---
 
@@ -66,79 +106,83 @@ chrome.ai/settings/usage
 
 ## Setup
 
-There are two parts. Do them in any order, but you need both running for it to work.
-
----
-
 ### Part 1 — Menu bar app (one-time install)
 
-This installs the app as a **login item** — it will start automatically every time you log in, with no terminal window needed.
+Installs the app as a **login item** — starts automatically at every login, no terminal needed after this.
 
 ```bash
 cd menubar
 bash install.sh
 ```
 
-That's it. `Claude —` appears in your menu bar within a few seconds. After the next reboot it will start on its own before you open anything else.
+`Claude —` appears in your menu bar within a few seconds. After the next reboot it starts on its own.
 
-> **To stop or uninstall:**
-> ```bash
-> launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist
-> ```
-
-> **To restart after making code changes:**
+> **To stop:** `launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist`
+>
+> **To restart after a code change:**
 > ```bash
 > launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist
 > launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist
 > ```
 
----
-
 ### Part 2 — Chrome extension
 
-1. Open Chrome and go to **`chrome://extensions`**
-2. Turn on **Developer mode** (toggle in the top-right corner)
-3. Click **Load unpacked**
-4. Select the **`extension/`** folder inside this project (not the root folder)
-5. The extension is now active — no icon or popup, it works silently
+1. Open Chrome → `chrome://extensions`
+2. Enable **Developer mode** (toggle, top right)
+3. Click **Load unpacked** → select the `extension/` folder
+4. Navigate to `claude.ai/settings/usage` once to trigger the first scrape
+
+### Part 3 — Claude Code statusline (optional)
+
+Usage is already wired into Claude Code's statusline. The script at `menubar/statusline.sh` reads from the same local JSON file the menu bar app writes, so no extra setup is needed — just make sure the menu bar app is running.
 
 ---
 
-### First data reading
+## How updates work
 
-Navigate to **`claude.ai/settings/usage`** once. The extension scrapes the page and sends the data immediately — your menu bar updates within a few seconds and shows real numbers.
-
-After that, the extension automatically refreshes in the background every 3 minutes. You don't need to keep that tab open.
-
----
-
-## Update schedule
-
-| What triggers an update | When |
+| Trigger | When |
 |---|---|
 | You visit `claude.ai/settings/usage` | Instantly on page load |
-| Background auto-refresh | Every 3 minutes (extension opens a silent background tab) |
-| You navigate to `/settings/usage` within claude.ai | Detected automatically |
+| Background auto-refresh | Every 3 minutes (silent background tab) |
+| SPA navigation within claude.ai | Detected automatically |
 
-Your last known data is always saved to `~/.claude_usage.json`, so the menu bar shows real numbers immediately after a restart — even before the next scrape.
+---
+
+## Comparison
+
+|  | ClaudeWatch | ClaudeMeter | Claude-Usage-Tracker |
+|---|---|---|---|
+| Language | Python + JS | Swift | Swift |
+| macOS requirement | 12+ | 14+ (Sonoma) | 14+ (Sonoma) |
+| Install | `bash install.sh` | Xcode or unsigned .dmg | Xcode or unsigned .dmg |
+| Credential access | None | Extracts session key | Extracts session key + API key |
+| ToS risk | None | Flagged in their own README | Sends anonymous analytics |
+| Usage history + trends | ✓ | ✗ | ✗ |
+| Claude Code statusline | ✓ | ✗ | ✓ |
+| Notifications | ✗ | ✓ | ✓ |
+| Multiple accounts | ✗ | ✗ | ✓ |
+| Icon style options | ✗ | 6 styles | 5 styles |
+
+ClaudeWatch is the minimal, credential-safe option. If you want rich native UI and notifications and are comfortable granting cookie access, ClaudeMeter or Claude-Usage-Tracker are more full-featured.
 
 ---
 
 ## Files
 
 ```
-UsageTracker/
+ClaudeWatch/
 ├── extension/
-│   ├── manifest.json          # Chrome MV3 manifest
-│   ├── content.js             # Scrapes the settings page, POSTs to Flask
-│   └── background.js          # Opens/reloads settings tab every 3 min
+│   ├── manifest.json              # Chrome MV3 manifest
+│   ├── content.js                 # Scrapes settings page, POSTs to Flask
+│   └── background.js              # Opens/reloads settings tab every 3 min
 │
 ├── menubar/
-│   ├── app.py                 # Flask server + rumps menu bar app
-│   ├── requirements.txt       # Python dependencies (rumps, flask)
-│   ├── install.sh             # One-time setup: venv + login item registration
-│   ├── start.sh               # Manual launch (for dev/testing without launchd)
-│   └── com.claudetracker.menubar.plist   # launchd config (used by install.sh)
+│   ├── app.py                     # Flask server + rumps menu bar app
+│   ├── statusline.sh              # Claude Code statusline script (coloured)
+│   ├── requirements.txt           # rumps, flask
+│   ├── install.sh                 # One-time setup + login item registration
+│   ├── start.sh                   # Manual launch for dev/testing
+│   └── com.claudetracker.menubar.plist  # launchd config
 │
 ├── .gitignore
 └── README.md
@@ -148,30 +192,26 @@ UsageTracker/
 
 ## Troubleshooting
 
-**Menu bar shows `Claude —` and won't update**
-→ Visit `claude.ai/settings/usage` manually to trigger the first scrape.
-→ Check that the menu bar app is running: `launchctl list | grep claudetracker`
+**Menu bar shows `Claude —`**
+→ Visit `claude.ai/settings/usage` to trigger the first scrape.
 
-**`[ClaudeTracker] Server unreachable` in Chrome DevTools console**
-→ The menu bar app isn't running. Re-run `install.sh` or load the plist manually:
-```bash
-launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist
-```
+**`[ClaudeWatch] Server unreachable` in Chrome DevTools**
+→ The menu bar app isn't running: `launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist`
 
-**Port 9999 is already in use**
+**Port 9999 already in use**
 ```bash
 lsof -ti:9999 | xargs kill -9
 launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist
 ```
 
-**Extension not appearing after load**
-→ Make sure Developer mode is on and you selected the `extension/` subfolder, not the project root.
+**Sparkline shows `no history yet`**
+→ Normal on first launch. It populates after a few scrapes.
 
-**Scraper stops working after a Claude UI update**
-→ Claude's settings page HTML changes occasionally. Open `extension/content.js` and update the regex patterns in `parseUsage()` to match whatever text the page now shows. The `[ClaudeTracker]` log lines in the DevTools console will show what the script found (or didn't).
+**Scraper breaks after a Claude UI update**
+→ Update the regex patterns in `extension/content.js` → `parseUsage()`. The `[ClaudeTracker]` logs in Chrome DevTools show exactly what text the script found.
 
 **Checking logs**
 ```bash
-tail -f /tmp/claudetracker.log   # stdout
-tail -f /tmp/claudetracker.err   # errors
+tail -f /tmp/claudetracker.log
+tail -f /tmp/claudetracker.err
 ```
