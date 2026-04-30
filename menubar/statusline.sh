@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # ClaudeWatch statusline for Claude Code.
-# Orange S (session), white W (weekly). Shows data age when stale (>3 min).
+# Reads colour scheme from ~/.claude_watch_settings.json and matches the menu bar theme.
+# Shows data age when last scrape is >3 minutes old.
 
 python3 - <<'EOF'
 import json, os, datetime
 
-f = os.path.expanduser("~/.claude_usage.json")
+# ---- load usage data ----
 try:
-    with open(f) as fp:
-        d = json.load(fp)
+    with open(os.path.expanduser("~/.claude_usage.json")) as f:
+        d = json.load(f)
     s       = d.get("sessionPct", "?")
     w       = d.get("weeklyPct",  "?")
     scraped = d.get("scrapedAt",  "")
@@ -16,7 +17,7 @@ except Exception:
     s = w = "?"
     scraped = ""
 
-# Age indicator — show minutes since last scrape if >3 min old
+# ---- staleness indicator ----
 age_str = ""
 if scraped:
     try:
@@ -27,10 +28,22 @@ if scraped:
     except Exception:
         pass
 
-orange = "\033[38;5;208m"
-white  = "\033[97m"
-dim    = "\033[2m"
-reset  = "\033[0m"
+# ---- colour scheme ----
+try:
+    with open(os.path.expanduser("~/.claude_watch_settings.json")) as f:
+        scheme = json.load(f).get("colorScheme", "anthropic")
+except Exception:
+    scheme = "anthropic"
 
-print(f"{orange}S:{s}%{reset} {white}W:{w}%{reset}{dim}{age_str}{reset}", end="")
+ANSI = {
+    "anthropic": ("\033[38;5;208m", "\033[97m"),    # orange,      white
+    "navy":      ("\033[38;5;39m",  "\033[97m"),    # dodger blue, white
+    "forest":    ("\033[38;5;41m",  "\033[97m"),    # spring green, white
+    "mono":      ("",               ""),
+}
+s_col, w_col = ANSI.get(scheme, ANSI["anthropic"])
+dim   = "\033[2m"
+reset = "\033[0m"
+
+print(f"{s_col}S:{s}%{reset} {w_col}W:{w}%{reset}{dim}{age_str}{reset}", end="")
 EOF

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ClaudeWatch — macOS menu bar app with optional colour themes."""
+"""ClaudeWatch — macOS menu bar app with colour themes."""
 
 import json
 import os
@@ -17,7 +17,21 @@ PORT          = 9999
 SPARK_CHARS   = "▁▂▃▄▅▆▇█"
 
 # ---------------------------------------------------------------------------
-# AppKit colour support — falls back to plain text if unavailable
+# Colour schemes
+# ---------------------------------------------------------------------------
+
+# Each scheme: (display name, filled-block colour RGBA, unfilled RGBA, weekly RGBA)
+# None = use system default (mono).
+COLOR_SCHEMES = {
+    "anthropic": ("Anthropic",    (1.00, 0.53, 0.00, 1.0), (1.0, 1.0, 1.0, 0.55), (1.0, 1.0, 1.0, 0.85)),
+    "navy":      ("Navy",         (0.20, 0.60, 1.00, 1.0), (1.0, 1.0, 1.0, 0.55), (1.0, 1.0, 1.0, 0.85)),
+    "forest":    ("Forest Green", (0.18, 0.78, 0.32, 1.0), (1.0, 1.0, 1.0, 0.55), (1.0, 1.0, 1.0, 0.85)),
+    "mono":      ("Mono",         None,                     None,                   None),
+}
+SCHEME_ORDER = ["anthropic", "navy", "forest", "mono"]
+
+# ---------------------------------------------------------------------------
+# AppKit colour support — falls back gracefully if unavailable
 # ---------------------------------------------------------------------------
 
 try:
@@ -27,43 +41,54 @@ try:
     )
     from Foundation import NSMakeRange
     _HAS_APPKIT = True
-    _ORANGE = NSColor.colorWithRed_green_blue_alpha_(1.0, 0.529, 0.0, 1.0)   # Anthropic orange
-    _WHITE  = NSColor.colorWithRed_green_blue_alpha_(1.0, 1.0, 1.0, 0.85)    # soft white
+
+    def _mk(rgba):
+        if rgba is None:
+            return None
+        return NSColor.colorWithRed_green_blue_alpha_(*rgba)
+
+    # Pre-build NSColor objects for each scheme
+    _SCHEME_COLORS = {
+        key: (_mk(filled), _mk(unfilled), _mk(weekly))
+        for key, (_, filled, unfilled, weekly) in COLOR_SCHEMES.items()
+    }
+
 except ImportError:
     _HAS_APPKIT = False
-    _ORANGE = _WHITE = None
+    _SCHEME_COLORS = {key: (None, None, None) for key in COLOR_SCHEMES}
 
 
-def _set_item_title(item, text: str, color=None) -> None:
-    """Set a menu item title with optional colour. Using attributed strings ensures
-    any previously set colour is always cleared on the next refresh."""
+def _set_segments(target, segments: list) -> None:
+    """Apply a list of (text, NSColor|None) to an NSMenuItem or the status button.
+    `target` is either a rumps.MenuItem or the App instance (for the status bar)."""
+    full = "".join(t for t, _ in segments)
+
     if not _HAS_APPKIT:
-        item.title = text
+        if isinstance(target, rumps.App):
+            target.title = full
+        else:
+            target.title = full
         return
-    try:
-        attrs = {NSForegroundColorAttributeName: color} if color else {}
-        astr  = NSAttributedString.alloc().initWithString_attributes_(text, attrs)
-        item._menuitem.setAttributedTitle_(astr)
-    except Exception:
-        item.title = text
 
-
-def _set_status_title(app, text: str, highlights: dict = None) -> None:
-    """Set status bar title with a per-substring colour map."""
-    if not _HAS_APPKIT:
-        app.title = text
-        return
     try:
-        astr = NSMutableAttributedString.alloc().initWithString_(text)
-        for substr, color in (highlights or {}).items():
-            idx = text.find(substr)
-            if idx >= 0:
+        astr = NSMutableAttributedString.alloc().initWithString_(full)
+        pos  = 0
+        for text, color in segments:
+            if color is not None:
                 astr.addAttribute_value_range_(
-                    NSForegroundColorAttributeName, color, NSMakeRange(idx, len(substr))
+                    NSForegroundColorAttributeName, color, NSMakeRange(pos, len(text))
                 )
-        app._status_item.button().setAttributedTitle_(astr)
+            pos += len(text)
+
+        if isinstance(target, rumps.App):
+            target._status_item.button().setAttributedTitle_(astr)
+        else:
+            target._menuitem.setAttributedTitle_(astr)
     except Exception:
-        app.title = text
+        if isinstance(target, rumps.App):
+            target.title = full
+        else:
+            target.title = full
 
 
 # ---------------------------------------------------------------------------
@@ -213,11 +238,6 @@ def _run_flask():
 # Display helpers
 # ---------------------------------------------------------------------------
 
-def _pct_bar(pct: int, width: int = 10) -> str:
-    filled = round(pct / 100 * width)
-    return "█" * filled + "▒" * (width - filled)
-
-
 def _sparkline(values: list, width: int = 14) -> str:
     vals = [v for v in values if v is not None]
     if not vals:
@@ -256,13 +276,12 @@ def _fmt_time(iso: str) -> str:
 
 class ClaudeWatchApp(rumps.App):
     def __init__(self):
-        # quit_button=None: we manage Quit ourselves to unload launchd first,
-        # otherwise KeepAlive: true restarts the process immediately on exit.
         super().__init__("Claude", quit_button=None)
         self._settings = _load_settings()
 
-        _noop = lambda _: None  # gives items solid-white colour in the menu
+        _noop = lambda _: None
 
+        # Data items
         self._item_session_pct   = rumps.MenuItem("Session:  —",          callback=_noop)
         self._item_session_reset = rumps.MenuItem("  ↺ resets  —",        callback=_noop)
         self._item_session_graph = rumps.MenuItem("  session history",     callback=_noop)
@@ -271,13 +290,12 @@ class ClaudeWatchApp(rumps.App):
         self._item_weekly_graph  = rumps.MenuItem("  weekly history",      callback=_noop)
         self._item_updated       = rumps.MenuItem("Last updated:  —",      callback=_noop)
 
-        scheme = self._settings.get("colorScheme", "anthropic")
-        self._item_scheme_toggle = rumps.MenuItem(
-            "Color: Anthropic  ✓" if scheme == "anthropic" else "Color: Mono  ✓",
-            callback=self._toggle_scheme,
-        )
-        appearance_menu = rumps.MenuItem("Appearance")
-        appearance_menu.add(self._item_scheme_toggle)
+        # One menu item per colour scheme — shown directly in the menu (radio style)
+        self._scheme_items = {}
+        for key in SCHEME_ORDER:
+            name, *_ = COLOR_SCHEMES[key]
+            item = rumps.MenuItem(name, callback=lambda _, k=key: self._select_scheme(k))
+            self._scheme_items[key] = item
 
         self.menu = [
             self._item_session_pct,
@@ -290,10 +308,13 @@ class ClaudeWatchApp(rumps.App):
             None,
             self._item_updated,
             None,
-            appearance_menu,
+            *self._scheme_items.values(),   # flat list: Anthropic / Navy / Forest Green / Mono
+            None,
             rumps.MenuItem("Open Settings", callback=self._open_settings),
             rumps.MenuItem("Quit",          callback=self._quit),
         ]
+
+        self._update_scheme_checkmarks()
 
         saved = _load_persisted()
         if saved:
@@ -303,16 +324,23 @@ class ClaudeWatchApp(rumps.App):
         self._timer.start()
         self._refresh_ui(None)
 
-    def _toggle_scheme(self, _sender):
-        scheme = "mono" if self._settings.get("colorScheme") == "anthropic" else "anthropic"
-        self._settings["colorScheme"] = scheme
+    # -----------------------------------------------------------------------
+
+    def _select_scheme(self, key: str) -> None:
+        self._settings["colorScheme"] = key
         _save_settings(self._settings)
-        self._item_scheme_toggle.title = (
-            "Color: Anthropic  ✓" if scheme == "anthropic" else "Color: Mono  ✓"
-        )
+        self._update_scheme_checkmarks()
         self._refresh_ui(None)
 
-    def _refresh_ui(self, _sender):
+    def _update_scheme_checkmarks(self) -> None:
+        active = self._settings.get("colorScheme", "anthropic")
+        for key, item in self._scheme_items.items():
+            name, *_ = COLOR_SCHEMES[key]
+            item.title = f"{name}  ✓" if key == active else name
+
+    # -----------------------------------------------------------------------
+
+    def _refresh_ui(self, _sender) -> None:
         u       = _get_usage()
         s_pct   = u.get("sessionPct")
         s_reset = u.get("sessionReset")
@@ -323,53 +351,86 @@ class ClaudeWatchApp(rumps.App):
         history = _get_history()
         s_vals  = [h.get("s") for h in history]
         w_vals  = [h.get("w") for h in history]
-        use_color = self._settings.get("colorScheme") == "anthropic"
 
-        # --- Status bar ---
+        scheme_key              = self._settings.get("colorScheme", "anthropic")
+        c_filled, c_unfilled, c_weekly = _SCHEME_COLORS[scheme_key]
+
+        # --- Status bar: orange S / white W ---
         parts = []
         if s_pct is not None: parts.append(f"S:{s_pct}%")
         if w_pct is not None: parts.append(f"W:{w_pct}%")
-        full_title = "Claude " + ("  ".join(parts) if parts else "—")
+        title_text = "Claude " + ("  ".join(parts) if parts else "—")
 
-        if use_color and s_pct is not None and w_pct is not None:
-            _set_status_title(self, full_title, {
-                f"S:{s_pct}%": _ORANGE,
-                f"W:{w_pct}%": _WHITE,
-            })
+        if c_filled and s_pct is not None and w_pct is not None:
+            _set_segments(self, [
+                ("Claude ",      None),
+                (f"S:{s_pct}%",  c_filled),
+                ("  ",           None),
+                (f"W:{w_pct}%",  c_weekly),
+            ])
         else:
-            _set_status_title(self, full_title)
+            _set_segments(self, [(title_text, None)])
 
-        # --- Session ---
-        s_text = f"Session:  {_pct_bar(s_pct)}  {s_pct}%" if s_pct is not None else "Session:  —"
-        _set_item_title(self._item_session_pct, s_text, _ORANGE if use_color else None)
-        _set_item_title(
-            self._item_session_reset,
-            f"  ↺ resets  {s_reset}" if s_reset else "  ↺ resets  —",
-        )
+        # --- Session: filled=primary, unfilled=white, sparkline=primary ---
+        if s_pct is not None:
+            filled_n   = round(s_pct / 100 * 10)
+            unfilled_n = 10 - filled_n
+            _set_segments(self._item_session_pct, [
+                ("Session:  ",        None),
+                ("█" * filled_n,      c_filled),
+                ("▒" * unfilled_n,    c_unfilled),
+                (f"  {s_pct}%",       c_filled),
+            ])
+        else:
+            _set_segments(self._item_session_pct, [("Session:  —", None)])
+
+        _set_segments(self._item_session_reset, [
+            (f"  ↺ resets  {s_reset}" if s_reset else "  ↺ resets  —", None)
+        ])
+
         spark_s = _sparkline(s_vals)
-        _set_item_title(
-            self._item_session_graph,
-            f"  {spark_s}  {_trend_label(s_vals)}" if spark_s else "  no history yet",
-        )
+        if spark_s:
+            _set_segments(self._item_session_graph, [
+                ("  ",                  None),
+                (spark_s,               c_filled),
+                (f"  {_trend_label(s_vals)}", None),
+            ])
+        else:
+            _set_segments(self._item_session_graph, [("  no history yet", None)])
 
-        # --- Weekly ---
-        w_text = f"Weekly:   {_pct_bar(w_pct)}  {w_pct}%" if w_pct is not None else "Weekly:   —"
-        _set_item_title(self._item_weekly_pct, w_text)
-        _set_item_title(
-            self._item_weekly_reset,
-            f"  ↺ resets  {w_reset}" if w_reset else "  ↺ resets  —",
-        )
+        # --- Weekly: all in weekly colour (white / scheme-appropriate) ---
+        if w_pct is not None:
+            filled_n   = round(w_pct / 100 * 10)
+            unfilled_n = 10 - filled_n
+            _set_segments(self._item_weekly_pct, [
+                ("Weekly:   ",        None),
+                ("█" * filled_n,      c_weekly),
+                ("▒" * unfilled_n,    c_unfilled),
+                (f"  {w_pct}%",       c_weekly),
+            ])
+        else:
+            _set_segments(self._item_weekly_pct, [("Weekly:   —", None)])
+
+        _set_segments(self._item_weekly_reset, [
+            (f"  ↺ resets  {w_reset}" if w_reset else "  ↺ resets  —", None)
+        ])
+
         spark_w = _sparkline(w_vals)
-        _set_item_title(
-            self._item_weekly_graph,
-            f"  {spark_w}  {_trend_label(w_vals)}" if spark_w else "  no history yet",
-        )
+        if spark_w:
+            _set_segments(self._item_weekly_graph, [
+                ("  ",                  None),
+                (spark_w,               c_weekly),
+                (f"  {_trend_label(w_vals)}", None),
+            ])
+        else:
+            _set_segments(self._item_weekly_graph, [("  no history yet", None)])
 
         # --- Last updated ---
-        _set_item_title(
-            self._item_updated,
-            f"Last updated:  {_fmt_time(scraped)}" if scraped else "Last updated:  —",
-        )
+        _set_segments(self._item_updated, [
+            (f"Last updated:  {_fmt_time(scraped)}" if scraped else "Last updated:  —", None)
+        ])
+
+    # -----------------------------------------------------------------------
 
     def _open_settings(self, _sender):
         import subprocess
