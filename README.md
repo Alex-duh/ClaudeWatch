@@ -2,6 +2,8 @@
 
 A macOS menu bar app that shows your Claude Pro session and weekly usage in real time — no browser tab required after setup.
 
+![Demo](demo.gif)
+
 ```
 Claude S:71%  W:14%
   ┌──────────────────────────────┐
@@ -19,6 +21,15 @@ Claude S:71%  W:14%
 ```
 
 **S** = current session · **W** = weekly across all models
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/Alex-duh/claude-usage-tracker.git
+cd claude-usage-tracker
+```
 
 ---
 
@@ -49,7 +60,7 @@ chrome.ai/settings/usage
 - macOS 12 or later
 - Python 3.9 or later (`python3 --version` to check)
 - Google Chrome
-- Claude Pro account
+- Claude paid account (Pro, Team, or Max)
 
 ---
 
