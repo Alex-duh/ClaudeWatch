@@ -4,6 +4,7 @@ menubar/__pycache__/
 *.pyc
 *.pyo
 .DS_Store
+**/.DS_Store
 dist/
 build/
 *.egg-info/
