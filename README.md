@@ -1,8 +1,8 @@
-# Claude Pro Usage Tracker
+# Claude Usage Tracker
 
-A macOS menu bar app that shows your Claude Pro session and weekly usage in real time — no browser tab required after setup.
+A macOS menu bar app that shows your Claude session and weekly usage in real time — no browser tab required after setup.
 
-![Demo](demo.gif)
+![Demo](Demo.gif)
 
 ```
 Claude S:71%  W:14%

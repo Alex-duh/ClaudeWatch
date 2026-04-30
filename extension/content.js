@@ -1,4 +1,4 @@
-// Scrapes Claude Pro usage from claude.ai/settings/usage and POSTs to localhost:9999.
+// Scrapes Claude usage from claude.ai/settings/usage and POSTs to localhost:9999.
 
 const SERVER_URL = "http://localhost:9999/usage";
 const RETRY_INTERVAL_MS = 1500;

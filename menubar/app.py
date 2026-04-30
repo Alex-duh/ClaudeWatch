@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Claude Pro Usage — macOS menu bar app.
+Claude Usage — macOS menu bar app.
 
 Runs a Flask server on localhost:9999 to receive data from the Chrome extension,
-and displays current Claude Pro usage in the menu bar via rumps.
+and displays current Claude usage in the menu bar via rumps.
 """
 
 import json

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Claude Pro Usage Tracker",
+  "name": "Claude Usage Tracker",
   "version": "1.0.0",
-  "description": "Scrapes Claude Pro usage from settings page and reports to local menu bar app.",
+  "description": "Scrapes Claude usage from settings page and reports to local menu bar app.",
   "permissions": [
     "activeTab",
     "alarms",
