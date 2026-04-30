@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ClaudeWatch — macOS menu bar app with colour themes."""
+"""ClaudeWatch — macOS menu bar app, minimal mono."""
 
 import json
 import os
@@ -9,29 +9,18 @@ from datetime import datetime
 import rumps
 from flask import Flask, request, jsonify
 
-DATA_FILE     = os.path.expanduser("~/.claude_usage.json")
-HISTORY_FILE  = os.path.expanduser("~/.claude_usage_history.json")
-SETTINGS_FILE = os.path.expanduser("~/.claude_watch_settings.json")
-MAX_HISTORY   = 200
-PORT          = 9999
-SPARK_CHARS   = "▁▂▃▄▅▆▇█"
+DATA_FILE    = os.path.expanduser("~/.claude_usage.json")
+HISTORY_FILE = os.path.expanduser("~/.claude_usage_history.json")
+MAX_HISTORY  = 200
+PORT         = 9999
+SPARK_CHARS  = "▁▂▃▄▅▆▇█"
 
 # ---------------------------------------------------------------------------
-# Colour schemes
-# ---------------------------------------------------------------------------
-
-# Each scheme: (display name, filled-block colour RGBA, unfilled RGBA, weekly RGBA)
-# None = use system default (mono).
-COLOR_SCHEMES = {
-    "anthropic": ("Anthropic",    (1.00, 0.53, 0.00, 1.0), (1.0, 1.0, 1.0, 0.55), (1.0, 1.0, 1.0, 0.85)),
-    "navy":      ("Navy",         (0.20, 0.60, 1.00, 1.0), (1.0, 1.0, 1.0, 0.55), (1.0, 1.0, 1.0, 0.85)),
-    "forest":    ("Forest Green", (0.18, 0.78, 0.32, 1.0), (1.0, 1.0, 1.0, 0.55), (1.0, 1.0, 1.0, 0.85)),
-    "mono":      ("Mono",         None,                     None,                   None),
-}
-SCHEME_ORDER = ["anthropic", "navy", "forest", "mono"]
-
-# ---------------------------------------------------------------------------
-# AppKit colour support — falls back gracefully if unavailable
+# Colours — mono only
+#   c_pri  : session filled dots + sparkline + title S:%
+#   c_sec  : weekly  filled dots + sparkline + title W:%
+#   c_unf  : empty dots
+#   c_sep  : │ separators
 # ---------------------------------------------------------------------------
 
 try:
@@ -42,34 +31,24 @@ try:
     from Foundation import NSMakeRange
     _HAS_APPKIT = True
 
-    def _mk(rgba):
-        if rgba is None:
-            return None
-        return NSColor.colorWithRed_green_blue_alpha_(*rgba)
-
-    # Pre-build NSColor objects for each scheme
-    _SCHEME_COLORS = {
-        key: (_mk(filled), _mk(unfilled), _mk(weekly))
-        for key, (_, filled, unfilled, weekly) in COLOR_SCHEMES.items()
-    }
+    # Adaptive system colors — pure white in dark mode, pure black in light mode
+    C_PRI = NSColor.labelColor()              # filled blocks (used)
+    C_SEC = NSColor.labelColor()              # weekly filled (same)
+    C_UNF = NSColor.tertiaryLabelColor()      # unfilled blocks (remaining)
+    C_SEP = NSColor.quaternaryLabelColor()    # │ separators
 
 except ImportError:
     _HAS_APPKIT = False
-    _SCHEME_COLORS = {key: (None, None, None) for key in COLOR_SCHEMES}
+    C_PRI = C_SEC = C_UNF = C_SEP = None
 
 
 def _set_segments(target, segments: list) -> None:
-    """Apply a list of (text, NSColor|None) to an NSMenuItem or the status button.
-    `target` is either a rumps.MenuItem or the App instance (for the status bar)."""
+    """Apply [(text, NSColor|None), …] to a MenuItem or App (status bar)."""
     full = "".join(t for t, _ in segments)
-
     if not _HAS_APPKIT:
-        if isinstance(target, rumps.App):
-            target.title = full
-        else:
-            target.title = full
+        if isinstance(target, rumps.App): target.title = full
+        else: target.title = full
         return
-
     try:
         astr = NSMutableAttributedString.alloc().initWithString_(full)
         pos  = 0
@@ -79,41 +58,25 @@ def _set_segments(target, segments: list) -> None:
                     NSForegroundColorAttributeName, color, NSMakeRange(pos, len(text))
                 )
             pos += len(text)
-
         if isinstance(target, rumps.App):
             target._status_item.button().setAttributedTitle_(astr)
         else:
             target._menuitem.setAttributedTitle_(astr)
     except Exception:
-        if isinstance(target, rumps.App):
-            target.title = full
-        else:
-            target.title = full
+        if isinstance(target, rumps.App): target.title = full
+        else: target.title = full
 
 
-# ---------------------------------------------------------------------------
-# Settings
-# ---------------------------------------------------------------------------
-
-_DEFAULT_SETTINGS: dict = {"colorScheme": "anthropic"}
-
-
-def _load_settings() -> dict:
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE) as f:
-                return {**_DEFAULT_SETTINGS, **json.load(f)}
-        except (json.JSONDecodeError, OSError):
-            pass
-    return dict(_DEFAULT_SETTINGS)
-
-
-def _save_settings(s: dict) -> None:
-    try:
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(s, f, indent=2)
-    except OSError:
-        pass
+def _bar_segs(pct: int, c_filled, c_unfilled, c_sep, n: int = 8):
+    """Solid-block progress bar: █ white filled, ▒ grey unfilled, │ separators."""
+    filled = round(pct / 100 * n)
+    segs   = []
+    for i in range(n):
+        if i > 0:
+            segs.append(("│", c_sep))
+        segs.append(("█" if i < filled else "▒",
+                      c_filled if i < filled else c_unfilled))
+    return segs
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +240,9 @@ def _fmt_time(iso: str) -> str:
 class ClaudeWatchApp(rumps.App):
     def __init__(self):
         super().__init__("Claude", quit_button=None)
-        self._settings = _load_settings()
 
         _noop = lambda _: None
 
-        # Data items
         self._item_session_pct   = rumps.MenuItem("Session:  —",          callback=_noop)
         self._item_session_reset = rumps.MenuItem("  ↺ resets  —",        callback=_noop)
         self._item_session_graph = rumps.MenuItem("  session history",     callback=_noop)
@@ -289,13 +250,6 @@ class ClaudeWatchApp(rumps.App):
         self._item_weekly_reset  = rumps.MenuItem("  ↺ weekly resets  —",  callback=_noop)
         self._item_weekly_graph  = rumps.MenuItem("  weekly history",      callback=_noop)
         self._item_updated       = rumps.MenuItem("Last updated:  —",      callback=_noop)
-
-        # One menu item per colour scheme — shown directly in the menu (radio style)
-        self._scheme_items = {}
-        for key in SCHEME_ORDER:
-            name, *_ = COLOR_SCHEMES[key]
-            item = rumps.MenuItem(name, callback=lambda _, k=key: self._select_scheme(k))
-            self._scheme_items[key] = item
 
         self.menu = [
             self._item_session_pct,
@@ -308,13 +262,9 @@ class ClaudeWatchApp(rumps.App):
             None,
             self._item_updated,
             None,
-            *self._scheme_items.values(),   # flat list: Anthropic / Navy / Forest Green / Mono
-            None,
             rumps.MenuItem("Open Settings", callback=self._open_settings),
             rumps.MenuItem("Quit",          callback=self._quit),
         ]
-
-        self._update_scheme_checkmarks()
 
         saved = _load_persisted()
         if saved:
@@ -323,22 +273,6 @@ class ClaudeWatchApp(rumps.App):
         self._timer = rumps.Timer(self._refresh_ui, 30)
         self._timer.start()
         self._refresh_ui(None)
-
-    # -----------------------------------------------------------------------
-
-    def _select_scheme(self, key: str) -> None:
-        self._settings["colorScheme"] = key
-        _save_settings(self._settings)
-        self._update_scheme_checkmarks()
-        self._refresh_ui(None)
-
-    def _update_scheme_checkmarks(self) -> None:
-        active = self._settings.get("colorScheme", "anthropic")
-        for key, item in self._scheme_items.items():
-            name, *_ = COLOR_SCHEMES[key]
-            item.title = f"{name}  ✓" if key == active else name
-
-    # -----------------------------------------------------------------------
 
     def _refresh_ui(self, _sender) -> None:
         u       = _get_usage()
@@ -352,35 +286,20 @@ class ClaudeWatchApp(rumps.App):
         s_vals  = [h.get("s") for h in history]
         w_vals  = [h.get("w") for h in history]
 
-        scheme_key              = self._settings.get("colorScheme", "anthropic")
-        c_filled, c_unfilled, c_weekly = _SCHEME_COLORS[scheme_key]
-
-        # --- Status bar: orange S / white W ---
+        # --- Status bar ---
         parts = []
         if s_pct is not None: parts.append(f"S:{s_pct}%")
         if w_pct is not None: parts.append(f"W:{w_pct}%")
-        title_text = "Claude " + ("  ".join(parts) if parts else "—")
+        title = "Claude " + ("  ".join(parts) if parts else "—")
+        _set_segments(self, [(title, C_PRI)])
 
-        if c_filled and s_pct is not None and w_pct is not None:
-            _set_segments(self, [
-                ("Claude ",      None),
-                (f"S:{s_pct}%",  c_filled),
-                ("  ",           None),
-                (f"W:{w_pct}%",  c_weekly),
-            ])
-        else:
-            _set_segments(self, [(title_text, None)])
-
-        # --- Session: filled=primary, unfilled=white, sparkline=primary ---
+        # --- Session bar ---
         if s_pct is not None:
-            filled_n   = round(s_pct / 100 * 10)
-            unfilled_n = 10 - filled_n
-            _set_segments(self._item_session_pct, [
-                ("Session:  ",        None),
-                ("█" * filled_n,      c_filled),
-                ("▒" * unfilled_n,    c_unfilled),
-                (f"  {s_pct}%",       c_filled),
-            ])
+            _set_segments(self._item_session_pct,
+                [("Session:  ", None)]
+                + _bar_segs(s_pct, C_PRI, C_UNF, C_SEP)
+                + [(f"  {s_pct}%", C_PRI)]
+            )
         else:
             _set_segments(self._item_session_pct, [("Session:  —", None)])
 
@@ -389,25 +308,18 @@ class ClaudeWatchApp(rumps.App):
         ])
 
         spark_s = _sparkline(s_vals)
-        if spark_s:
-            _set_segments(self._item_session_graph, [
-                ("  ",                  None),
-                (spark_s,               c_filled),
-                (f"  {_trend_label(s_vals)}", None),
-            ])
-        else:
-            _set_segments(self._item_session_graph, [("  no history yet", None)])
+        _set_segments(self._item_session_graph,
+            [("  ", None), (spark_s, C_PRI), (f"  {_trend_label(s_vals)}", None)]
+            if spark_s else [("  no history yet", None)]
+        )
 
-        # --- Weekly: all in weekly colour (white / scheme-appropriate) ---
+        # --- Weekly bar ---
         if w_pct is not None:
-            filled_n   = round(w_pct / 100 * 10)
-            unfilled_n = 10 - filled_n
-            _set_segments(self._item_weekly_pct, [
-                ("Weekly:   ",        None),
-                ("█" * filled_n,      c_weekly),
-                ("▒" * unfilled_n,    c_unfilled),
-                (f"  {w_pct}%",       c_weekly),
-            ])
+            _set_segments(self._item_weekly_pct,
+                [("Weekly:   ", None)]
+                + _bar_segs(w_pct, C_SEC, C_UNF, C_SEP)
+                + [(f"  {w_pct}%", C_SEC)]
+            )
         else:
             _set_segments(self._item_weekly_pct, [("Weekly:   —", None)])
 
@@ -416,21 +328,15 @@ class ClaudeWatchApp(rumps.App):
         ])
 
         spark_w = _sparkline(w_vals)
-        if spark_w:
-            _set_segments(self._item_weekly_graph, [
-                ("  ",                  None),
-                (spark_w,               c_weekly),
-                (f"  {_trend_label(w_vals)}", None),
-            ])
-        else:
-            _set_segments(self._item_weekly_graph, [("  no history yet", None)])
+        _set_segments(self._item_weekly_graph,
+            [("  ", None), (spark_w, C_SEC), (f"  {_trend_label(w_vals)}", None)]
+            if spark_w else [("  no history yet", None)]
+        )
 
         # --- Last updated ---
         _set_segments(self._item_updated, [
             (f"Last updated:  {_fmt_time(scraped)}" if scraped else "Last updated:  —", None)
         ])
-
-    # -----------------------------------------------------------------------
 
     def _open_settings(self, _sender):
         import subprocess

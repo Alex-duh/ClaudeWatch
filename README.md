@@ -7,16 +7,16 @@ A minimal macOS menu bar app that shows your Claude session and weekly usage in 
 ```
 Claude S:71%  W:14%
   ┌─────────────────────────────────┐
-  │ Session:  ███████▒▒▒  71%      │
+  │ Session:  █│█│█│█│█│▒│▒│▒  71% │
   │   ↺ resets  in 6 min           │
   │   ▁▂▃▄▅▆▇▇██  ↑ +15%          │
-  │ ──────────────────────────────  │
-  │ Weekly:   █▒▒▒▒▒▒▒▒▒  14%     │
+  │                                 │
+  │ Weekly:   █│▒│▒│▒│▒│▒│▒│▒  14% │
   │   ↺ resets  Thu 12:00 AM       │
   │   ▁▁▁▁▂▂▂▂▃▃  → steady        │
-  │ ──────────────────────────────  │
+  │                                 │
   │ Last updated:  Apr 30 14:22    │
-  │ ──────────────────────────────  │
+  │                                 │
   │ Open Settings                  │
   │ Quit                           │
   └─────────────────────────────────┘
@@ -52,7 +52,7 @@ claude.ai/settings/usage
         │
    Flask server  ──▶  rumps menu bar
                             │
-                   ~/.claude_usage.json     (current state)
+                   ~/.claude_usage.json          (current state)
                    ~/.claude_usage_history.json  (rolling history)
 ```
 
@@ -61,7 +61,7 @@ claude.ai/settings/usage
 ## Features
 
 ### Live progress bars
-Both session and weekly usage shown as filled/unfilled block bars with exact percentages.
+Both session and weekly usage shown as solid block bars — white filled, grey remaining — that adapt automatically to light and dark mode.
 
 ### Sparkline history graphs
 Every scrape is logged locally. The dropdown shows a mini graph of the last ~45 minutes of readings so you can see usage trajectory at a glance.
@@ -81,10 +81,10 @@ Compares current usage to ~1 hour ago and shows whether you're accelerating, ste
 | `↺ reset` | Session reset detected |
 
 ### Claude Code statusline
-Usage is shown directly in the Claude Code terminal UI in colour — **orange** for session, **white** for weekly.
+Usage is shown directly in the Claude Code terminal UI — session in Anthropic orange, weekly in white, with a live staleness indicator.
 
 ```
-◆ Claude  S:71% W:14%
+◆ Claude  S:71% W:14% ·now
 ```
 
 ### Zero credential risk
@@ -117,11 +117,12 @@ bash install.sh
 
 `Claude —` appears in your menu bar within a few seconds. After the next reboot it starts on its own.
 
-> **To stop:** `launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist`
+> **To stop:** Click **Quit** in the menu bar dropdown.
 >
-> **To restart after a code change:**
+> **To reopen after quitting:** just type `cw` in any terminal — the alias is installed automatically by `install.sh`.
+>
+> **Manual restart (if needed):**
 > ```bash
-> launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist
 > launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist
 > ```
 
@@ -161,9 +162,6 @@ Usage is already wired into Claude Code's statusline. The script at `menubar/sta
 | Claude Code statusline | ✓ | ✗ | ✓ |
 | Notifications | ✗ | ✓ | ✓ |
 | Multiple accounts | ✗ | ✗ | ✓ |
-| Icon style options | ✗ | 6 styles | 5 styles |
-
-ClaudeWatch is the minimal, credential-safe option. If you want rich native UI and notifications and are comfortable granting cookie access, ClaudeMeter or Claude-Usage-Tracker are more full-featured.
 
 ---
 
@@ -178,7 +176,7 @@ ClaudeWatch/
 │
 ├── menubar/
 │   ├── app.py                     # Flask server + rumps menu bar app
-│   ├── statusline.sh              # Claude Code statusline script (coloured)
+│   ├── statusline.sh              # Claude Code statusline script
 │   ├── requirements.txt           # rumps, flask
 │   ├── install.sh                 # One-time setup + login item registration
 │   ├── start.sh                   # Manual launch for dev/testing

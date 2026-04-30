@@ -22,9 +22,22 @@ cp "$PLIST_SRC" "$PLIST_DST"
 launchctl unload "$PLIST_DST" 2>/dev/null || true
 launchctl load "$PLIST_DST"
 
+echo "→ Adding 'cw' alias to shell..."
+ALIAS_LINE="alias cw='launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist'"
+for RC in "$HOME/.zshrc" "$HOME/.bashrc"; do
+  if [ -f "$RC" ] && ! grep -qF "alias cw=" "$RC"; then
+    echo "" >> "$RC"
+    echo "# ClaudeWatch — reopen menu bar app" >> "$RC"
+    echo "$ALIAS_LINE" >> "$RC"
+  fi
+done
+# Apply to current session
+eval "$ALIAS_LINE"
+
 echo ""
-echo "✓ Done. Claude Usage Tracker is now running and will start automatically at login."
+echo "✓ Done. ClaudeWatch is running and starts automatically at login."
 echo "  Check the menu bar — you should see 'Claude' appear within a few seconds."
 echo ""
-echo "  To uninstall:  launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist"
-echo "  View logs:     tail -f /tmp/claudetracker.log"
+echo "  Reopen after quitting:  cw   (or open a new terminal tab if it doesn't work yet)"
+echo "  View logs:              tail -f /tmp/claudetracker.log"
+echo "  Uninstall:              launchctl unload ~/Library/LaunchAgents/com.claudetracker.menubar.plist"
