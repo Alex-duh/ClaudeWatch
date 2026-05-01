@@ -160,8 +160,7 @@ Usage is already wired into Claude Code's statusline. The script at `menubar/sta
 | ToS risk | None | Flagged in their own README | Sends anonymous analytics |
 | Usage history + trends | ✓ | ✗ | ✗ |
 | Claude Code statusline | ✓ | ✗ | ✓ |
-| Notifications | ✗ | ✓ | ✓ |
-| Multiple accounts | ✗ | ✗ | ✓ |
+| Adaptive dark / light mode | ✓ | ✓ | ✓ |
 
 ---
 
