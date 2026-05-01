@@ -9,11 +9,12 @@ from datetime import datetime
 import rumps
 from flask import Flask, request, jsonify
 
-DATA_FILE    = os.path.expanduser("~/.claude_usage.json")
-HISTORY_FILE = os.path.expanduser("~/.claude_usage_history.json")
-MAX_HISTORY  = 200
-PORT         = 9999
-SPARK_CHARS  = "▁▂▃▄▅▆▇█"
+DATA_FILE     = os.path.expanduser("~/.claude_usage.json")
+HISTORY_FILE  = os.path.expanduser("~/.claude_usage_history.json")
+SETTINGS_FILE = os.path.expanduser("~/.claude_watch_settings.json")
+MAX_HISTORY   = 200
+PORT          = 9999
+SPARK_CHARS   = "▁▂▃▄▅▆▇█"
 
 # ---------------------------------------------------------------------------
 # Colours — mono only
@@ -77,6 +78,28 @@ def _bar_segs(pct: int, c_filled, c_unfilled, c_sep, n: int = 8):
         segs.append(("█" if i < filled else "▒",
                       c_filled if i < filled else c_unfilled))
     return segs
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+def _load_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {"showGraph": True}
+
+
+def _save_settings(s: dict) -> None:
+    try:
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(s, f, indent=2)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +264,8 @@ class ClaudeWatchApp(rumps.App):
     def __init__(self):
         super().__init__("Claude", quit_button=None)
 
+        self._settings = _load_settings()
+
         _noop = lambda _: None
 
         self._item_session_pct   = rumps.MenuItem("Session:  —",          callback=_noop)
@@ -250,6 +275,7 @@ class ClaudeWatchApp(rumps.App):
         self._item_weekly_reset  = rumps.MenuItem("  ↺ weekly resets  —",  callback=_noop)
         self._item_weekly_graph  = rumps.MenuItem("  weekly history",      callback=_noop)
         self._item_updated       = rumps.MenuItem("Last updated:  —",      callback=_noop)
+        self._item_toggle_graph  = rumps.MenuItem("Graph  ✓",              callback=self._toggle_graph)
 
         self.menu = [
             self._item_session_pct,
@@ -262,9 +288,12 @@ class ClaudeWatchApp(rumps.App):
             None,
             self._item_updated,
             None,
+            self._item_toggle_graph,
             rumps.MenuItem("Open Settings", callback=self._open_settings),
             rumps.MenuItem("Quit",          callback=self._quit),
         ]
+
+        self._apply_graph_visibility()
 
         saved = _load_persisted()
         if saved:
@@ -337,6 +366,19 @@ class ClaudeWatchApp(rumps.App):
         _set_segments(self._item_updated, [
             (f"Last updated:  {_fmt_time(scraped)}" if scraped else "Last updated:  —", None)
         ])
+
+    def _toggle_graph(self, _sender):
+        self._settings["showGraph"] = not self._settings.get("showGraph", True)
+        _save_settings(self._settings)
+        self._apply_graph_visibility()
+        self._refresh_ui(None)
+
+    def _apply_graph_visibility(self):
+        show = self._settings.get("showGraph", True)
+        self._item_toggle_graph.title = "Graph  ✓" if show else "Graph"
+        if _HAS_APPKIT:
+            self._item_session_graph._menuitem.setHidden_(not show)
+            self._item_weekly_graph._menuitem.setHidden_(not show)
 
     def _open_settings(self, _sender):
         import subprocess

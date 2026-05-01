@@ -64,7 +64,7 @@ claude.ai/settings/usage
 Both session and weekly usage shown as solid block bars — white filled, grey remaining — that adapt automatically to light and dark mode.
 
 ### Sparkline history graphs
-Every scrape is logged locally. The dropdown shows a mini graph of the last ~45 minutes of readings so you can see usage trajectory at a glance.
+Every scrape is logged locally. The dropdown shows a mini graph of the last ~45 minutes of readings so you can see usage trajectory at a glance. Toggle it on or off with the **Graph** button in the menu.
 
 ```
 ▁▂▃▄▅▆▇▇██  ↑ +15%
@@ -82,6 +82,8 @@ Compares current usage to ~1 hour ago and shows whether you're accelerating, ste
 
 ### Claude Code statusline
 Usage is shown directly in the Claude Code terminal UI — session in Anthropic orange, weekly in white, with a live staleness indicator.
+
+![Terminal](terminal.png)
 
 ```
 ◆ Claude  S:71% W:14% ·now
@@ -212,3 +214,15 @@ launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist
 tail -f /tmp/claudetracker.log
 tail -f /tmp/claudetracker.err
 ```
+
+---
+
+## License
+
+MIT © 2025 Alex Du
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
