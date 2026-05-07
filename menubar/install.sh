@@ -19,11 +19,11 @@ PLIST_DST="$HOME/Library/LaunchAgents/com.claudetracker.menubar.plist"
 cp "$PLIST_SRC" "$PLIST_DST"
 
 # Unload first in case an old version is registered
-launchctl unload "$PLIST_DST" 2>/dev/null || true
-launchctl load "$PLIST_DST"
+launchctl bootout "gui/$(id -u)/com.claudetracker.menubar" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
 
 echo "→ Adding 'cw' alias to shell..."
-ALIAS_LINE="alias cw='launchctl load ~/Library/LaunchAgents/com.claudetracker.menubar.plist'"
+ALIAS_LINE="alias cw='launchctl bootout gui/\$(id -u)/com.claudetracker.menubar 2>/dev/null; launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/com.claudetracker.menubar.plist'"
 for RC in "$HOME/.zshrc" "$HOME/.bashrc"; do
   if [ -f "$RC" ] && ! grep -qF "alias cw=" "$RC"; then
     echo "" >> "$RC"
